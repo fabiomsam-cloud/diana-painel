@@ -7,15 +7,19 @@ import Alunos from './components/Alunos'
 import Propostas from './components/Propostas'
 import Inbox from './components/Inbox'
 import Metricas from './components/Metricas'
-import Config from './components/Config'
+import Agentes from './components/Agentes'
+import Mentorias from './components/Mentorias'
+import Equipe from './components/Equipe'
 
 const TABS = [
   { id: 'fila', label: 'Fila', icon: '📋' },
-  { id: 'alunos', label: 'Alunos', icon: '👥' },
-  { id: 'propostas', label: 'Propostas', icon: '🤖' },
+  { id: 'alunos', label: 'Alunos', icon: '🧑‍🎓' },
+  { id: 'propostas', label: 'Propostas', icon: '📝' },
   { id: 'inbox', label: 'Inbox', icon: '💬' },
   { id: 'metricas', label: 'Métricas', icon: '📊' },
-  { id: 'config', label: 'Config', icon: '⚙️' },
+  { id: 'agentes', label: 'Agentes', icon: '🤖' },
+  { id: 'mentorias', label: 'Mentorias', icon: '🎓' },
+  { id: 'equipe', label: 'Equipe', icon: '👥' },
 ] as const
 
 export default function App() {
@@ -137,7 +141,9 @@ export default function App() {
         {tab === 'propostas' && <Propostas />}
         {tab === 'inbox' && <Inbox />}
         {tab === 'metricas' && <Metricas />}
-        {tab === 'config' && <Config />}
+        {tab === 'agentes' && <Agentes />}
+        {tab === 'mentorias' && <Mentorias />}
+        {tab === 'equipe' && <Equipe />}
       </main>
     </div>
   )
