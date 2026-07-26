@@ -3,10 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 // Chave publishable (pública por design). A segurança do painel vem do
 // Supabase Auth + RLS fn_is_operator() no banco.
 export const SUPABASE_URL = 'https://nbyiabyrgjukaqeowhlr.supabase.co'
-export const ANON_KEY = 'COLE_A_CHAVE_AQUI'
+export const ANON_KEY = 'sb_publishable_3T9KTXvf4MF1isnWwCZUsQ_8vHNtcpg'
 
 // Enquanto a chave for o placeholder, o App mostra a tela de configuração.
-export const keyConfigurada = ANON_KEY !== 'COLE_A_CHAVE_AQUI' && ANON_KEY.length > 20
+export const keyConfigurada = !ANON_KEY.startsWith('COLE_') && ANON_KEY.length > 20
 
 export const supabase = createClient(SUPABASE_URL, ANON_KEY)
 
