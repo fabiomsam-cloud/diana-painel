@@ -6,6 +6,7 @@ import Fila from './components/Fila'
 import Alunos from './components/Alunos'
 import Propostas from './components/Propostas'
 import Inbox from './components/Inbox'
+import Disparos from './components/Disparos'
 import Metricas from './components/Metricas'
 import Agentes from './components/Agentes'
 import Mentorias from './components/Mentorias'
@@ -16,6 +17,7 @@ const TABS = [
   { id: 'alunos', label: 'Alunos', icon: '🧑‍🎓' },
   { id: 'propostas', label: 'Propostas', icon: '📝' },
   { id: 'inbox', label: 'Inbox', icon: '💬' },
+  { id: 'disparos', label: 'Disparos', icon: '📣' },
   { id: 'metricas', label: 'Métricas', icon: '📊' },
   { id: 'agentes', label: 'Agentes', icon: '🤖' },
   { id: 'mentorias', label: 'Mentorias', icon: '🎓' },
@@ -28,6 +30,7 @@ export default function App() {
   const [tab, setTab] = useState<string>('fila')
   const [alertasAbertos, setAlertasAbertos] = useState(0)
   const [propostasPend, setPropostasPend] = useState(0)
+  const [campanhasRodando, setCampanhasRodando] = useState(0)
 
   useEffect(() => {
     if (!keyConfigurada) { setLoading(false); return }
@@ -42,12 +45,14 @@ export default function App() {
   useEffect(() => {
     if (!session) return
     const contar = async () => {
-      const [a, p] = await Promise.all([
+      const [a, p, d] = await Promise.all([
         supabase.from('alertas').select('*', { count: 'exact', head: true }).eq('status', 'aberto'),
         supabase.from('rotas').select('*', { count: 'exact', head: true }).eq('status', 'proposta'),
+        supabase.from('broadcast_campaigns').select('*', { count: 'exact', head: true }).eq('status', 'running'),
       ])
       setAlertasAbertos(a.count ?? 0)
       setPropostasPend(p.count ?? 0)
+      setCampanhasRodando(d.count ?? 0)
     }
     contar()
     const t = setInterval(() => { if (document.visibilityState === 'visible') contar() }, 60000)
@@ -76,7 +81,8 @@ export default function App() {
   if (!session) return <Login />
 
   const badge = (id: string) =>
-    id === 'fila' ? alertasAbertos : id === 'propostas' ? propostasPend : 0
+    id === 'fila' ? alertasAbertos : id === 'propostas' ? propostasPend
+    : id === 'disparos' ? campanhasRodando : 0
 
   return (
     <div className="h-full flex flex-col md:flex-row">
@@ -140,6 +146,7 @@ export default function App() {
         {tab === 'alunos' && <Alunos />}
         {tab === 'propostas' && <Propostas />}
         {tab === 'inbox' && <Inbox />}
+        {tab === 'disparos' && <Disparos />}
         {tab === 'metricas' && <Metricas />}
         {tab === 'agentes' && <Agentes />}
         {tab === 'mentorias' && <Mentorias />}
