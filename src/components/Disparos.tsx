@@ -297,12 +297,43 @@ export default function Disparos() {
 
   const verDetalhe = async (id: string) => {
     setDetalhe(detalhe === id ? null : id)
-    if (detalhe !== id) {
-      const { data } = await supabase.from('broadcast_recipients')
-        .select('id,name,phone,status,sent_at').eq('campaign_id', id)
-        .order('created_at').limit(100)
-      setRecipients((data as any) ?? [])
+    if (detalhe === id) return
+    // Campanha RECORRENTE: a lista real só nasce no sábado 8h — aqui mostramos a
+    // PRÉVIA de quem entraria AGORA (diagnóstico concluído + adimplente), marcando
+    // quem já respondeu o check-in desta semana (esses ficam de fora do envio).
+    if (recInfo[id]) {
+      const rows: Recipient[] = []
+      // segunda-feira da semana corrente (mesma régua do motor/formulário)
+      const hoje = new Date()
+      const seg = new Date(hoje)
+      seg.setDate(hoje.getDate() - ((hoje.getDay() + 6) % 7))
+      const semana = seg.toISOString().slice(0, 10)
+      const { data: cks } = await supabase.from('checkins_semana')
+        .select('aluno_id').eq('semana', semana)
+      const jaFez = new Set(((cks as any) ?? []).map((c: any) => c.aluno_id))
+      for (let ini = 0; ; ini += 1000) {
+        const { data: pag } = await supabase.from('diagnosticos')
+          .select('aluno_id, concluido_em, alunos!inner(id,nome,phone,situacao,opted_out,status)')
+          .eq('needs_review', false)
+          .eq('alunos.status', 'ativo').eq('alunos.opted_out', false)
+          .order('concluido_em', { ascending: false }).range(ini, ini + 999)
+        for (const d of ((pag as any) ?? [])) {
+          const a = d.alunos
+          if (!a) continue
+          const fora = a.situacao !== 'adimplente' ? 'inadimplente'
+            : jaFez.has(d.aluno_id) ? 'ja_respondeu' : ''
+          rows.push({ id: d.aluno_id, name: a.nome, phone: a.phone,
+            status: fora || 'vai_receber', sent_at: null } as any)
+        }
+        if (!pag || pag.length < 1000) break
+      }
+      setRecipients(rows)
+      return
     }
+    const { data } = await supabase.from('broadcast_recipients')
+      .select('id,name,phone,status,sent_at').eq('campaign_id', id)
+      .order('created_at').limit(100)
+    setRecipients((data as any) ?? [])
   }
 
   const mudarStatus = async (id: string, novo: string) => {
@@ -417,17 +448,32 @@ export default function Disparos() {
         {s.falhas > 0 && <span className="text-danger">falhas <b>{s.falhas}</b></span>}
       </div>
       {detalhe === s.campaign_id && (
-        <div className="rise mt-3 border-t border-line pt-3 max-h-64 overflow-y-auto space-y-1">
-          {recipients.map(r => (
-            <div key={r.id} className="flex items-center gap-3 text-xs">
-              <span className={`font-mono text-[10px] w-28 shrink-0 ${
-                r.status === 'sent' ? 'text-win' : r.status === 'pending' ? 'text-dim'
-                : r.status.startsWith('skipped') ? 'text-gold' : 'text-danger'}`}>{r.status}</span>
-              <span className="truncate">{r.name || '—'}</span>
-              <span className="font-mono text-dim">{r.phone}</span>
-              <span className="ml-auto font-mono text-[10px] text-dim/60">{r.sent_at ? fmtHora(r.sent_at) : ''}</span>
+        <div className="rise mt-3 border-t border-line pt-3 space-y-2">
+          {rec && (
+            <div className="text-[11px] text-dim leading-relaxed">
+              👀 <b className="text-teal">Prévia do próximo sábado</b> — quem entraria na lista se o disparo fosse agora:{' '}
+              <b className="text-win">{recipients.filter(r => r.status === 'vai_receber').length} vão receber</b>
+              {recipients.some(r => r.status === 'ja_respondeu') && <> · <b className="text-gold">{recipients.filter(r => r.status === 'ja_respondeu').length} já responderam esta semana</b></>}
+              {recipients.some(r => r.status === 'inadimplente') && <> · <b className="text-danger">{recipients.filter(r => r.status === 'inadimplente').length} fora por inadimplência</b></>}
+              {' '}(novos diagnósticos entram sozinhos até sábado 7h59)
             </div>
-          ))}
+          )}
+          <div className="max-h-64 overflow-y-auto space-y-1">
+            {recipients.map(r => (
+              <div key={r.id} className="flex items-center gap-3 text-xs">
+                <span className={`font-mono text-[10px] w-28 shrink-0 ${
+                  r.status === 'sent' || r.status === 'vai_receber' ? 'text-win'
+                  : r.status === 'pending' ? 'text-dim'
+                  : r.status === 'ja_respondeu' || r.status.startsWith('skipped') ? 'text-gold'
+                  : 'text-danger'}`}>
+                  {r.status === 'vai_receber' ? '✓ vai receber' : r.status === 'ja_respondeu' ? '✔ já respondeu' : r.status}
+                </span>
+                <span className="truncate">{r.name || '—'}</span>
+                <span className="font-mono text-dim">{r.phone}</span>
+                <span className="ml-auto font-mono text-[10px] text-dim/60">{r.sent_at ? fmtHora(r.sent_at) : ''}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
