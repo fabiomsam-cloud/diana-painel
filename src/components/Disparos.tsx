@@ -81,8 +81,15 @@ export default function Disparos() {
     carregar()
     fetch(TEMPLATES_URL).then(r => r.json())
       .then(d => {
-        // Meta cobra diferente por categoria, mas p/ alunos da base usamos MARKETING e UTILITY
-        setTemplates((d.templates ?? []).filter((t: Template) => t.category === 'MARKETING' || t.category === 'UTILITY'))
+        // REGRA DO FÁBIO: a Diana envia EXCLUSIVAMENTE templates de UTILIDADE.
+        // (o worker ainda revalida a categoria na hora do envio — a Meta pode reclassificar)
+        // normaliza buttons p/ string (o proxy manda objetos {type,text,url} — renderizar
+        // objeto como filho do React derruba o painel inteiro)
+        const norm = (d.templates ?? []).map((t: any) => ({
+          ...t,
+          buttons: (t.buttons ?? []).map((b: any) => (typeof b === 'string' ? b : String(b?.text ?? ''))).filter(Boolean),
+        }))
+        setTemplates(norm.filter((t: Template) => t.category === 'UTILITY'))
         setTplOffline(false)
       })
       .catch(() => { setTemplates([]); setTplOffline(true) })
@@ -441,10 +448,10 @@ export default function Disparos() {
 
       <div className="border border-teal/30 bg-teal/5 rounded-xl p-4 text-xs text-dim leading-relaxed">
         ✅ <b className="text-teal">Disparo OFICIAL (Meta Cloud API)</b> — templates aprovados, sem risco de banimento.
-        A Meta cobra por mensagem de marketing (~R$ 0,35–0,60). O aluno que responder (ou tocar num botão) cai direto
-        no agente da campanha — escolha o agente da mentoria da lista. Boas práticas: 2–3 templates rotacionados,
-        listas de alunos que conhecem o Grupo SOU, e taxa de resposta baixa (&lt;10%) = pause e melhore o template —
-        protege a qualidade (selo verde) do número.
+        🔒 <b className="text-gold">Trava de utilidade:</b> a Diana envia EXCLUSIVAMENTE templates da categoria
+        UTILIDADE (mais baratos e adequados a alunos da base). Só eles aparecem na lista abaixo, e o motor revalida a
+        categoria na hora de cada envio — se a Meta reclassificar um template para marketing, o disparo é bloqueado
+        automaticamente. O aluno que responder (ou tocar num botão) cai direto no agente da campanha.
       </div>
 
       {criando && (
