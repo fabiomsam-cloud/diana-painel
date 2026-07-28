@@ -6,6 +6,7 @@ import Fila from './components/Fila'
 import Alunos from './components/Alunos'
 import Propostas from './components/Propostas'
 import Inbox from './components/Inbox'
+import Escalacoes from './components/Escalacoes'
 import Disparos from './components/Disparos'
 import Metricas from './components/Metricas'
 import Agentes from './components/Agentes'
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'alunos', label: 'Alunos', icon: '🧑‍🎓' },
   { id: 'propostas', label: 'Propostas', icon: '📝' },
   { id: 'inbox', label: 'Inbox', icon: '💬' },
+  { id: 'escalacoes', label: 'Escalações', icon: '🚨' },
   { id: 'disparos', label: 'Disparos', icon: '📣' },
   { id: 'metricas', label: 'Métricas', icon: '📊' },
   { id: 'agentes', label: 'Agentes', icon: '🤖' },
@@ -29,8 +31,10 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<string>('fila')
   const [alertasAbertos, setAlertasAbertos] = useState(0)
+  const [escAbertas, setEscAbertas] = useState(0)
   const [propostasPend, setPropostasPend] = useState(0)
   const [campanhasRodando, setCampanhasRodando] = useState(0)
+  const [convParaAbrir, setConvParaAbrir] = useState<string | null>(null)
 
   useEffect(() => {
     if (!keyConfigurada) { setLoading(false); return }
@@ -45,12 +49,14 @@ export default function App() {
   useEffect(() => {
     if (!session) return
     const contar = async () => {
-      const [a, p, d] = await Promise.all([
+      const [a, e, p, d] = await Promise.all([
         supabase.from('alertas').select('*', { count: 'exact', head: true }).eq('status', 'aberto'),
+        supabase.from('escalacoes').select('*', { count: 'exact', head: true }).eq('status', 'aberta'),
         supabase.from('rotas').select('*', { count: 'exact', head: true }).eq('status', 'proposta'),
         supabase.from('broadcast_campaigns').select('*', { count: 'exact', head: true }).eq('status', 'running'),
       ])
       setAlertasAbertos(a.count ?? 0)
+      setEscAbertas(e.count ?? 0)
       setPropostasPend(p.count ?? 0)
       setCampanhasRodando(d.count ?? 0)
     }
@@ -81,7 +87,8 @@ export default function App() {
   if (!session) return <Login />
 
   const badge = (id: string) =>
-    id === 'fila' ? alertasAbertos : id === 'propostas' ? propostasPend
+    id === 'fila' ? alertasAbertos : id === 'escalacoes' ? escAbertas
+    : id === 'propostas' ? propostasPend
     : id === 'disparos' ? campanhasRodando : 0
 
   return (
@@ -126,7 +133,7 @@ export default function App() {
               {t.label}
               {badge(t.id) > 0 && (
                 <span className={`ml-auto text-[10px] font-mono font-semibold rounded-full px-2 py-0.5 border
-                  ${t.id === 'fila' ? 'bg-danger/20 text-danger border-danger/40 pulse-danger' : 'bg-gold/20 text-gold border-gold/40'}`}>
+                  ${t.id === 'fila' || t.id === 'escalacoes' ? 'bg-danger/20 text-danger border-danger/40 pulse-danger' : 'bg-gold/20 text-gold border-gold/40'}`}>
                   {badge(t.id)}
                 </span>
               )}
@@ -145,7 +152,8 @@ export default function App() {
         {tab === 'fila' && <Fila />}
         {tab === 'alunos' && <Alunos />}
         {tab === 'propostas' && <Propostas />}
-        {tab === 'inbox' && <Inbox />}
+        {tab === 'inbox' && <Inbox convInicial={convParaAbrir} aoConsumir={() => setConvParaAbrir(null)} />}
+        {tab === 'escalacoes' && <Escalacoes irParaInbox={(convId?: string) => { setConvParaAbrir(convId ?? null); setTab('inbox') }} />}
         {tab === 'disparos' && <Disparos />}
         {tab === 'metricas' && <Metricas />}
         {tab === 'agentes' && <Agentes />}

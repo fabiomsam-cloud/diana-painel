@@ -22,6 +22,13 @@ const toLocal = (iso: string | null) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+// campanha RECORRENTE: vive permanentemente em 'running' e a lista de
+// destinatários é renovada pelo motor a cada ciclo — a edição no painel só
+// mexe em nome/templates/ritmo, nunca em recipients/status/scheduled_at.
+type RecInfo = { recorrencia: string; last_run_semana: string | null }
+const LBL_RECORRENCIA: Record<string, string> = { semanal_sab_8h: 'sábados 8h' }
+const fmtSemana = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
+
 const FORM_VAZIO = { name: '', agente_slug: '', csv: '', interval_min_s: 5, interval_max_s: 10, daily_cap: 1000 }
 const IMP_VAZIO = { mentoria_id: '', situacao: 'adimplentes' as 'adimplentes' | 'todos', diag: 'todos' as 'todos' | 'sem' | 'com' }
 
@@ -35,6 +42,8 @@ export default function Disparos() {
   const [selTpl, setSelTpl] = useState<string[]>([])
   const [criando, setCriando] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
+  const [editRec, setEditRec] = useState(false)
+  const [recInfo, setRecInfo] = useState<Record<string, RecInfo>>({})
   const [launch, setLaunch] = useState<'now' | 'schedule' | 'draft'>('draft')
   const [schedAt, setSchedAt] = useState('')
   const [detalhe, setDetalhe] = useState<string | null>(null)
@@ -53,6 +62,13 @@ export default function Disparos() {
   const carregar = async () => {
     const { data } = await supabase.from('vw_broadcast_stats').select('*').order('name')
     setStats((data as any) ?? [])
+    // colunas novas (recorrencia/last_run_semana) vivem na tabela — busca direta
+    // e mescla por id, sem depender da view expô-las
+    const { data: recs } = await supabase.from('broadcast_campaigns')
+      .select('id,recorrencia,last_run_semana').not('recorrencia', 'is', null)
+    const m: Record<string, RecInfo> = {}
+    for (const r of ((recs as any) ?? [])) m[r.id] = { recorrencia: r.recorrencia, last_run_semana: r.last_run_semana }
+    setRecInfo(m)
     // Diana não tem roteador: cada agente é de uma mentoria — lista direta, sem triagem no topo
     const { data: ag } = await supabase.from('agentes').select('slug,nome')
       .eq('ativo', true).order('slug')
@@ -75,7 +91,7 @@ export default function Disparos() {
   }, [])
 
   const fecharForm = () => {
-    setCriando(false); setEditId(null); setSelTpl([]); setLaunch('draft'); setSchedAt('')
+    setCriando(false); setEditId(null); setEditRec(false); setSelTpl([]); setLaunch('draft'); setSchedAt('')
     setForm({ ...FORM_VAZIO }); setImp({ ...IMP_VAZIO }); setImportados(0)
     setManualTpl({ name: '', body: '' })
   }
@@ -93,18 +109,22 @@ export default function Disparos() {
 
   const abrirEdicao = async (id: string) => {
     const { data: camp } = await supabase.from('broadcast_campaigns')
-      .select('name,agente_slug,message_variants,interval_min_s,interval_max_s,daily_cap,status,scheduled_at')
+      .select('name,agente_slug,message_variants,interval_min_s,interval_max_s,daily_cap,status,scheduled_at,recorrencia')
       .eq('id', id).single()
     if (!camp) return flash('Não consegui carregar a campanha.')
+    const recorrente = !!camp.recorrencia
+    // recorrente: a lista é do motor (renovada todo sábado) — NÃO carrega recipients
     // GOTCHA (herdado da Anne): pagina de 1000 em 1000 — o Supabase corta respostas
     // em 1000 linhas e um load parcial já truncou uma campanha de 2.437 p/ 1.000 no save
     const recs: any[] = []
-    for (let ini = 0; ; ini += 1000) {
-      const { data: pag } = await supabase.from('broadcast_recipients')
-        .select('name,phone').eq('campaign_id', id).order('created_at')
-        .range(ini, ini + 999)
-      recs.push(...((pag as any) ?? []))
-      if (!pag || pag.length < 1000) break
+    if (!recorrente) {
+      for (let ini = 0; ; ini += 1000) {
+        const { data: pag } = await supabase.from('broadcast_recipients')
+          .select('name,phone').eq('campaign_id', id).order('created_at')
+          .range(ini, ini + 999)
+        recs.push(...((pag as any) ?? []))
+        if (!pag || pag.length < 1000) break
+      }
     }
     const variants = (camp.message_variants ?? []) as { name: string; body?: string }[]
     // garante que variantes salvas apareçam selecionáveis mesmo sem o proxy de templates
@@ -120,6 +140,7 @@ export default function Disparos() {
     setSelTpl(variants.map(v => v.name))
     setLaunch(camp.status === 'scheduled' ? 'schedule' : 'draft')
     setSchedAt(toLocal(camp.scheduled_at))
+    setEditRec(recorrente)
     setEditId(id); setCriando(true); setDetalhe(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -185,6 +206,24 @@ export default function Disparos() {
     const linhas = form.csv.split('\n').map(l => l.trim()).filter(Boolean)
     if (!form.name || !form.agente_slug) return flash('Preencha nome e agente.')
     if (variants.length < 1) return flash('Selecione ao menos 1 template aprovado (ideal: 2-3, rotacionados).')
+
+    // RECORRENTE: atualiza APENAS nome/templates/ritmo — o motor renova a lista
+    // todo sábado 8h e a campanha vive em 'running'; nunca tocar em recipients,
+    // status ou scheduled_at aqui.
+    if (editRec && editId) {
+      setSalvando(true)
+      const { error } = await supabase.from('broadcast_campaigns').update({
+        name: form.name, message_variants: variants,
+        interval_min_s: form.interval_min_s, interval_max_s: form.interval_max_s,
+        daily_cap: form.daily_cap,
+      }).eq('id', editId)
+      setSalvando(false)
+      if (error) return flash('Erro: ' + error.message)
+      flash('Campanha recorrente atualizada — o próximo disparo de sábado já usa os novos templates.')
+      fecharForm()
+      carregar()
+      return
+    }
     if (!linhas.length) return flash('Cole a lista de destinatários (Nome;Telefone) ou importe da base.')
     if (launch === 'schedule' && !schedAt) return flash('Escolha data e hora do disparo programado.')
     setSalvando(true)
@@ -306,19 +345,29 @@ export default function Disparos() {
   const arquivadas = stats.filter(s => s.archived_at).sort((a, b) =>
     (b.archived_at ?? '').localeCompare(a.archived_at ?? ''))
 
-  const cardCampanha = (s: Stats) => (
+  const cardCampanha = (s: Stats) => {
+    const rec = recInfo[s.campaign_id]
+    return (
     <div key={s.campaign_id} className={`border border-line bg-panel/50 rounded-xl p-4 ${s.archived_at ? 'opacity-70' : ''}`}>
       <div className="flex items-center gap-3 flex-wrap">
         <span className={`text-[10px] px-2 py-0.5 rounded border uppercase font-mono ${STATUS_CAMP[s.status] ?? ''}`}>
           {s.status === 'scheduled' ? 'programada' : s.status}
         </span>
+        {rec && (
+          <span className="text-[10px] px-2 py-0.5 rounded border border-teal/40 bg-teal/10 text-teal font-mono">
+            🔁 RECORRENTE · {LBL_RECORRENCIA[rec.recorrencia] ?? rec.recorrencia}
+          </span>
+        )}
         <span className="font-semibold">{s.name}</span>
         <span className="text-[11px] px-1.5 py-0.5 rounded border border-line text-dim">{nomeAgente(s.agente_slug)}</span>
         {s.status === 'scheduled' && s.scheduled_at && (
           <span className="text-[11px] font-mono text-teal">🕐 {fmtHora(s.scheduled_at)}</span>
         )}
+        {rec?.last_run_semana && (
+          <span className="text-[11px] font-mono text-dim">último disparo: semana de {fmtSemana(rec.last_run_semana)}</span>
+        )}
         <div className="ml-auto flex items-center gap-2">
-          {(s.status === 'draft' || s.status === 'scheduled') && (
+          {(s.status === 'draft' || s.status === 'scheduled' || rec) && (
             <button onClick={() => abrirEdicao(s.campaign_id)}
               className="text-xs text-dim border border-line rounded-lg px-3 py-1.5 hover:text-cream transition">✎ Editar</button>
           )}
@@ -334,14 +383,14 @@ export default function Disparos() {
             <button onClick={() => mudarStatus(s.campaign_id, 'paused')}
               className="text-xs font-semibold bg-gold/15 text-gold border border-gold/40 rounded-lg px-3 py-1.5 hover:bg-gold/25 transition">⏸ Pausar</button>
           )}
-          {(s.status === 'done' || s.status === 'cancelled') && (s.archived_at ? (
+          {!rec && (s.status === 'done' || s.status === 'cancelled') && (s.archived_at ? (
             <button onClick={() => arquivar(s.campaign_id, false)}
               className="text-xs text-dim border border-line rounded-lg px-3 py-1.5 hover:text-cream transition">↩ Desarquivar</button>
           ) : (
             <button onClick={() => arquivar(s.campaign_id, true)}
               className="text-xs text-dim border border-line rounded-lg px-3 py-1.5 hover:text-cream transition">📦 Arquivar</button>
           ))}
-          {s.status === 'draft' && (
+          {!rec && s.status === 'draft' && (
             <button onClick={() => excluir(s)}
               className="text-xs text-danger border border-danger/40 rounded-lg px-3 py-1.5 hover:bg-danger/10 transition">🗑 Excluir</button>
           )}
@@ -375,7 +424,8 @@ export default function Disparos() {
         </div>
       )}
     </div>
-  )
+    )
+  }
 
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6 max-w-4xl space-y-5">
@@ -399,14 +449,21 @@ export default function Disparos() {
 
       {criando && (
         <div className="rise border border-line bg-panel/50 rounded-xl p-4 space-y-3">
-          {editId && <div className="text-xs text-gold font-semibold">✎ Editando campanha — a lista de destinatários será substituída pela caixa abaixo.</div>}
+          {editId && !editRec && <div className="text-xs text-gold font-semibold">✎ Editando campanha — a lista de destinatários será substituída pela caixa abaixo.</div>}
+          {editRec && (
+            <div className="text-xs text-teal font-semibold border border-teal/30 bg-teal/5 rounded-lg px-3 py-2 leading-relaxed">
+              🔁 Editando campanha RECORRENTE — aqui você troca nome, templates e ritmo.
+              A lista de destinatários é renovada automaticamente todo sábado 8h com alunos de diagnóstico concluído,
+              e a campanha continua rodando (status e programação não mudam).
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block text-xs text-dim">Nome da campanha
               <input className={inp + ' mt-1'} placeholder="Elite PRF · Check-in semanal" value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })} />
             </label>
             <label className="block text-xs text-dim">Agente que assume as conversas
-              <select className={inp + ' mt-1'} value={form.agente_slug}
+              <select className={inp + ' mt-1 disabled:opacity-50'} value={form.agente_slug} disabled={editRec}
                 onChange={e => setForm({ ...form, agente_slug: e.target.value })}>
                 <option value="">Selecione…</option>
                 {agentes.map(a => (
@@ -461,6 +518,7 @@ export default function Disparos() {
           </div>
 
           {/* 👥 Importar da base — alimenta a MESMA lista Nome;Telefone do textarea */}
+          {!editRec && (
           <div className="border border-teal/30 bg-teal/5 rounded-lg p-3 space-y-2">
             <div className="text-xs font-semibold text-teal">👥 Importar da base</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -503,11 +561,14 @@ export default function Disparos() {
             </div>
             <p className="text-[11px] text-dim/70">Matrículas ativas da mentoria; quem pediu opt-out fica SEMPRE de fora. Os alunos entram na lista abaixo — revise antes de salvar.</p>
           </div>
+          )}
 
+          {!editRec && (
           <label className="block text-xs text-dim">Destinatários — um por linha, formato Nome;Telefone (aceita vírgula/tab)
             <textarea rows={6} className={inp + ' mt-1 font-mono text-xs'} placeholder={'Maria Silva;5592988887777\nJoão Souza;5592977776666'}
               value={form.csv} onChange={e => setForm({ ...form, csv: e.target.value })} />
           </label>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="block text-xs text-dim">Intervalo mín. (s)
               <input type="number" className={inp + ' mt-1'} value={form.interval_min_s}
@@ -524,6 +585,7 @@ export default function Disparos() {
           </div>
           <p className="text-[11px] text-dim/70">Intervalo de 5s ≈ 12 envios/min ≈ 700/hora. O limite REAL é o tier diário da Meta (veja em WhatsApp Manager → seu número → "Limite de mensagens") e a qualidade do número: NUNCA configure o teto diário acima do seu tier. Espalhar uma lista grande ao longo do dia continua sendo bom para a qualidade — respostas chegam aos poucos e a IA atende com calma.</p>
 
+          {!editRec && (
           <div className="border-t border-line pt-3">
             <div className="text-xs text-dim mb-2">Quando disparar?</div>
             <div className="flex gap-2 flex-wrap">
@@ -544,10 +606,12 @@ export default function Disparos() {
               <p className="text-[11px] text-dim/70 mt-2">Horário de Manaus (o do seu computador). Se cair fora da janela 8h–21h, a campanha inicia mas os envios aguardam a janela abrir.</p>
             )}
           </div>
+          )}
 
           <button onClick={salvar} disabled={salvando}
             className="bg-gold text-ink font-semibold rounded-lg px-6 py-2.5 text-sm hover:brightness-110 transition disabled:opacity-50">
             {salvando ? 'Salvando…'
+              : editRec ? 'Salvar campanha recorrente'
               : launch === 'now' ? (editId ? 'Salvar e disparar agora' : 'Criar e disparar agora')
               : launch === 'schedule' ? (editId ? 'Salvar programação' : 'Criar campanha programada')
               : (editId ? 'Salvar rascunho' : 'Criar campanha (rascunho)')}

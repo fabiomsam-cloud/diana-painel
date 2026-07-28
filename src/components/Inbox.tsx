@@ -18,7 +18,7 @@ const FROM_STYLE: Record<string, string> = {
   system: 'self-center bg-panel border-line text-dim text-xs',
 }
 
-export default function Inbox() {
+export default function Inbox({ convInicial, aoConsumir }: { convInicial?: string | null; aoConsumir?: () => void } = {}) {
   const [convs, setConvs] = useState<Conv[]>([])
   const [sel, setSel] = useState<Conv | null>(null)
   const [msgs, setMsgs] = useState<Msg[]>([])
@@ -53,6 +53,15 @@ export default function Inbox() {
       .order('last_message_at', { ascending: false, nullsFirst: false }).limit(200)
     setConvs((data as any) ?? [])
   }
+
+  // vindo das Escalações: abre direto a conversa do aluno (mesmo mecanismo da Anne)
+  useEffect(() => {
+    if (!convInicial) return
+    supabase.from('conversas').select(SEL)
+      .eq('id', convInicial).single()
+      .then(({ data }) => { if (data) setSel(data as any) })
+    aoConsumir?.()
+  }, [convInicial])
 
   useEffect(() => {
     carregarConvs()
