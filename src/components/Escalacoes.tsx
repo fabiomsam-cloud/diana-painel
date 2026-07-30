@@ -4,12 +4,15 @@ import { supabase, fmtHora, fmtFone } from '../lib/supabase'
 type Esc = {
   id: string; motivo: string | null; status: string
   claimed_by: string | null; created_at: string; resolvida_em: string | null
-  conversas: { id: string; status: string; alunos: { nome: string | null; phone: string | null; status: string | null } | null } | null
+  conversas: { id: string; status: string; alunos: { nome: string | null; phone: string | null; status: string | null; situacao: string | null } | null } | null
 }
 
-// fora da base (30/07): visitante ganha cadastro-stub + conversa em modo humano,
-// então a escalação vem COM conversa e o Atender abre direto no Inbox
+// barrados (30/07): fora da base E inadimplente ganham conversa em modo humano,
+// então a escalação vem COM conversa e o Atender abre direto no Inbox.
+// Diana nunca interage com eles — sem "Resolver + IA".
 const ehVisitante = (e: Esc) => e.conversas?.alunos?.status === 'visitante'
+const ehInadimplente = (e: Esc) => e.conversas?.alunos?.situacao === 'inadimplente'
+const ehBarrado = (e: Esc) => ehVisitante(e) || ehInadimplente(e)
 
 // GOTCHA: o workflow de alerta grava claimed_by='__avisado__' quando ninguém
 // atende em 10min (dedup do aviso no grupo). Isso NÃO é atendimento humano —
@@ -22,7 +25,7 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
   const [resolvidas, setResolvidas] = useState<Esc[]>([])
   const [verResolvidas, setVerResolvidas] = useState(false)
 
-  const SEL = 'id,motivo,status,claimed_by,created_at,resolvida_em,conversas(id,status,alunos(nome,phone,status))'
+  const SEL = 'id,motivo,status,claimed_by,created_at,resolvida_em,conversas(id,status,alunos(nome,phone,status,situacao))'
 
   const carregar = async () => {
     const [pend, res] = await Promise.all([
@@ -90,6 +93,12 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
                   fora da base
                 </span>
               )}
+              {ehInadimplente(e) && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded border border-danger/40 text-danger bg-danger/5"
+                  title="Aluno com pendência financeira — a Diana não responde; atenda pelo Inbox">
+                  💰 inadimplente
+                </span>
+              )}
               {aberta && (
                 <span className="text-[10px] font-mono text-danger">aberta há {minutosAberta(e)} min</span>
               )}
@@ -123,7 +132,7 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
                     Abrir no Inbox
                   </button>
                 )}
-                {e.conversas && !ehVisitante(e) && (
+                {e.conversas && !ehBarrado(e) && (
                   <button onClick={() => resolver(e, true)} title="Resolve a escalação e devolve a conversa para a Diana"
                     className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
                     Resolver + IA ↩

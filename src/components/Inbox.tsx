@@ -263,8 +263,11 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
 
   const ficha = sel?.alunos?.ficha ?? {}
   const jan = janela(sel, agora)
-  // fora da base (30/07): visitante não tem Diana p/ devolver — fica sempre com o time
+  // barrados (30/07): fora da base e inadimplente ficam sempre com o time —
+  // a Diana não interage, então não existe "Devolver à Diana"
   const ehVisitante = sel?.alunos?.status === 'visitante'
+  const ehInadimplente = sel?.alunos?.situacao === 'inadimplente'
+  const ehBarrado = ehVisitante || ehInadimplente
   const primeiroNome = (sel?.alunos?.nome ?? '').trim().split(/\s+/)[0] || 'aluno(a)'
   const nomeAgente = (slug?: string | null) =>
     agentes.find(a => a.slug === slug)?.nome ?? slug ?? ''
@@ -309,6 +312,9 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
                 {c.alunos?.status === 'visitante' && (
                   <span className="text-[9px] px-1 py-0.5 rounded border border-gold/40 text-gold shrink-0">fora da base</span>
                 )}
+                {c.alunos?.situacao === 'inadimplente' && (
+                  <span className="text-[9px] px-1 py-0.5 rounded border border-danger/40 text-danger shrink-0">💰</span>
+                )}
                 <span className="font-mono text-[10px] text-dim shrink-0">{fmtHora(c.last_message_at)}</span>
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -352,6 +358,12 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
                   fora da base
                 </span>
               )}
+              {ehInadimplente && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded border border-danger/40 text-danger bg-danger/5 shrink-0"
+                  title="Pendência financeira — a Diana não responde; atendimento humano; regularizou, o Sync devolve sozinho">
+                  💰 inadimplente
+                </span>
+              )}
               <span className={`text-[11px] font-mono px-2 py-1 rounded-lg border shrink-0 ${
                 jan.aberta ? 'text-win border-win/40 bg-win/10' : 'text-danger border-danger/40 bg-danger/10'}`}
                 title={jan.aberta ? 'Tempo restante da janela de 24h (conversa livre)' : 'Sem conversa livre — envie um template p/ reabrir'}>
@@ -361,7 +373,7 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
                 <button onClick={() => setInfoAberto(true)} title="Dados do aluno"
                   className="xl:hidden text-xs text-dim border border-line rounded-lg px-2.5 py-1.5 hover:text-cream transition">ℹ️</button>
                 {sel.status === 'humano' ? (
-                  !ehVisitante && (
+                  !ehBarrado && (
                   <button onClick={devolver}
                     className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
                     ↩ Devolver à Diana
