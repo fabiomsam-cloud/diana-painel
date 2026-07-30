@@ -77,9 +77,15 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm">
-                {e.conversas?.alunos?.nome || fmtFone(e.conversas?.alunos?.phone)}
+                {e.conversas ? (e.conversas.alunos?.nome || fmtFone(e.conversas.alunos?.phone)) : '📵 Pessoa barrada'}
               </span>
-              <span className="font-mono text-[10px] text-dim">{fmtFone(e.conversas?.alunos?.phone)}</span>
+              {e.conversas && <span className="font-mono text-[10px] text-dim">{fmtFone(e.conversas.alunos?.phone)}</span>}
+              {!e.conversas && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded border border-gold/40 text-gold bg-gold/5"
+                  title="Escreveu para a Diana mas não está na base como aluno adimplente — nome, fone e mensagem no motivo abaixo">
+                  fora da base
+                </span>
+              )}
               {aberta && (
                 <span className="text-[10px] font-mono text-danger">aberta há {minutosAberta(e)} min</span>
               )}
@@ -107,14 +113,18 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
             )}
             {e.status !== 'resolvida' && (
               <>
-                <button onClick={() => irParaInbox(e.conversas?.id)}
-                  className="text-xs text-dim border border-line rounded-lg px-3 py-1.5 hover:text-cream transition">
-                  Abrir no Inbox
-                </button>
-                <button onClick={() => resolver(e, true)} title="Resolve a escalação e devolve a conversa para a Diana"
-                  className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
-                  Resolver + IA ↩
-                </button>
+                {e.conversas && (
+                  <button onClick={() => irParaInbox(e.conversas!.id)}
+                    className="text-xs text-dim border border-line rounded-lg px-3 py-1.5 hover:text-cream transition">
+                    Abrir no Inbox
+                  </button>
+                )}
+                {e.conversas && (
+                  <button onClick={() => resolver(e, true)} title="Resolve a escalação e devolve a conversa para a Diana"
+                    className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
+                    Resolver + IA ↩
+                  </button>
+                )}
                 <button onClick={() => resolver(e, false)} title="Marca como resolvida e some desta tela; a conversa fica como está"
                   className="text-xs font-semibold bg-win/10 text-win border border-win/40 rounded-lg px-3 py-1.5 hover:bg-win/20 transition">
                   ✓ Encerrar
