@@ -61,8 +61,12 @@ export default function App() {
       setCampanhasRodando(d.count ?? 0)
     }
     contar()
+    // escalação nova acende o badge na hora (realtime, como na Anne)
+    const ch = supabase.channel('esc-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'escalacoes' }, contar)
+      .subscribe()
     const t = setInterval(() => { if (document.visibilityState === 'visible') contar() }, 60000)
-    return () => clearInterval(t)
+    return () => { supabase.removeChannel(ch); clearInterval(t) }
   }, [session, tab])
 
   if (!keyConfigurada) {

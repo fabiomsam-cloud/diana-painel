@@ -37,8 +37,12 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
 
   useEffect(() => {
     carregar()
-    const t = setInterval(() => { if (document.visibilityState === 'visible') carregar() }, 20000)
-    return () => clearInterval(t)
+    // realtime (mesmo mecanismo da Anne) + polling leve de reserva
+    const ch = supabase.channel('escs')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'escalacoes' }, carregar)
+      .subscribe()
+    const t = setInterval(() => { if (document.visibilityState === 'visible') carregar() }, 60000)
+    return () => { supabase.removeChannel(ch); clearInterval(t) }
   }, [])
 
   // Atender = assumir a escalação + conversa em modo humano + abrir a conversa no Inbox
