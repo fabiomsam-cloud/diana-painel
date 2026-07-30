@@ -4,8 +4,12 @@ import { supabase, fmtHora, fmtFone } from '../lib/supabase'
 type Esc = {
   id: string; motivo: string | null; status: string
   claimed_by: string | null; created_at: string; resolvida_em: string | null
-  conversas: { id: string; status: string; alunos: { nome: string | null; phone: string | null } | null } | null
+  conversas: { id: string; status: string; alunos: { nome: string | null; phone: string | null; status: string | null } | null } | null
 }
+
+// fora da base (30/07): visitante ganha cadastro-stub + conversa em modo humano,
+// então a escalação vem COM conversa e o Atender abre direto no Inbox
+const ehVisitante = (e: Esc) => e.conversas?.alunos?.status === 'visitante'
 
 // GOTCHA: o workflow de alerta grava claimed_by='__avisado__' quando ninguém
 // atende em 10min (dedup do aviso no grupo). Isso NÃO é atendimento humano —
@@ -18,7 +22,7 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
   const [resolvidas, setResolvidas] = useState<Esc[]>([])
   const [verResolvidas, setVerResolvidas] = useState(false)
 
-  const SEL = 'id,motivo,status,claimed_by,created_at,resolvida_em,conversas(id,status,alunos(nome,phone))'
+  const SEL = 'id,motivo,status,claimed_by,created_at,resolvida_em,conversas(id,status,alunos(nome,phone,status))'
 
   const carregar = async () => {
     const [pend, res] = await Promise.all([
@@ -80,9 +84,9 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
                 {e.conversas ? (e.conversas.alunos?.nome || fmtFone(e.conversas.alunos?.phone)) : '📵 Pessoa barrada'}
               </span>
               {e.conversas && <span className="font-mono text-[10px] text-dim">{fmtFone(e.conversas.alunos?.phone)}</span>}
-              {!e.conversas && (
+              {(!e.conversas || ehVisitante(e)) && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded border border-gold/40 text-gold bg-gold/5"
-                  title="Escreveu para a Diana mas não está na base como aluno adimplente — nome, fone e mensagem no motivo abaixo">
+                  title="Escreveu para a Diana mas não está na base de alunos — atenda pelo Inbox para entender o caso">
                   fora da base
                 </span>
               )}
@@ -119,7 +123,7 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
                     Abrir no Inbox
                   </button>
                 )}
-                {e.conversas && (
+                {e.conversas && !ehVisitante(e) && (
                   <button onClick={() => resolver(e, true)} title="Resolve a escalação e devolve a conversa para a Diana"
                     className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
                     Resolver + IA ↩

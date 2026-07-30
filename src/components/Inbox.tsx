@@ -10,7 +10,7 @@ type Conv = {
   last_message_at: string | null; last_user_message_at: string | null; contexto: any
   alunos: {
     id: string; nome: string | null; phone: string | null; email: string | null
-    ficha: any; situacao: string | null; opted_out: boolean
+    ficha: any; situacao: string | null; opted_out: boolean; status: string | null
   } | null
 }
 type Msg = {
@@ -44,7 +44,7 @@ const FROM_STYLE: Record<string, string> = {
 }
 
 const SEL = 'id,status,agente_slug,last_message_at,last_user_message_at,contexto,' +
-  'alunos(id,nome,phone,email,ficha,situacao,opted_out)'
+  'alunos(id,nome,phone,email,ficha,situacao,opted_out,status)'
 
 const FICHA_LABELS: Record<string, string> = {
   trabalha: 'Trabalha', profissao: 'Profissão', horas_semana: 'Horas/semana',
@@ -263,6 +263,8 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
 
   const ficha = sel?.alunos?.ficha ?? {}
   const jan = janela(sel, agora)
+  // fora da base (30/07): visitante não tem Diana p/ devolver — fica sempre com o time
+  const ehVisitante = sel?.alunos?.status === 'visitante'
   const primeiroNome = (sel?.alunos?.nome ?? '').trim().split(/\s+/)[0] || 'aluno(a)'
   const nomeAgente = (slug?: string | null) =>
     agentes.find(a => a.slug === slug)?.nome ?? slug ?? ''
@@ -304,6 +306,9 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
                 ${sel?.id === c.id ? 'bg-panel2' : ''}`}>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-sm truncate">{c.alunos?.nome || fmtFone(c.alunos?.phone)}</span>
+                {c.alunos?.status === 'visitante' && (
+                  <span className="text-[9px] px-1 py-0.5 rounded border border-gold/40 text-gold shrink-0">fora da base</span>
+                )}
                 <span className="font-mono text-[10px] text-dim shrink-0">{fmtHora(c.last_message_at)}</span>
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -341,6 +346,12 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
                 <div className="font-display font-semibold truncate">{sel.alunos?.nome || 'Sem nome'}</div>
                 <div className="font-mono text-[11px] text-dim">{fmtFone(sel.alunos?.phone)}</div>
               </div>
+              {ehVisitante && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded border border-gold/40 text-gold bg-gold/5 shrink-0"
+                  title="Não está na base de alunos — atendimento 100% humano; se comprar, vira aluno automaticamente">
+                  fora da base
+                </span>
+              )}
               <span className={`text-[11px] font-mono px-2 py-1 rounded-lg border shrink-0 ${
                 jan.aberta ? 'text-win border-win/40 bg-win/10' : 'text-danger border-danger/40 bg-danger/10'}`}
                 title={jan.aberta ? 'Tempo restante da janela de 24h (conversa livre)' : 'Sem conversa livre — envie um template p/ reabrir'}>
@@ -350,10 +361,12 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
                 <button onClick={() => setInfoAberto(true)} title="Dados do aluno"
                   className="xl:hidden text-xs text-dim border border-line rounded-lg px-2.5 py-1.5 hover:text-cream transition">ℹ️</button>
                 {sel.status === 'humano' ? (
+                  !ehVisitante && (
                   <button onClick={devolver}
                     className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
                     ↩ Devolver à Diana
                   </button>
+                  )
                 ) : (
                   <button onClick={assumir}
                     className="text-xs font-semibold bg-gold/15 text-gold border border-gold/40 rounded-lg px-3 py-1.5 hover:bg-gold/25 transition">
