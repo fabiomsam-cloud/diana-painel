@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { supabase, fmtHora, fmtFone } from '../lib/supabase'
+import VincularAluno from './VincularAluno'
 
 type Esc = {
   id: string; motivo: string | null; status: string
   claimed_by: string | null; created_at: string; resolvida_em: string | null
-  conversas: { id: string; status: string; alunos: { nome: string | null; phone: string | null; status: string | null; situacao: string | null } | null } | null
+  conversas: { id: string; status: string; alunos: { id: string; nome: string | null; phone: string | null; status: string | null; situacao: string | null } | null } | null
 }
 
 // barrados (30/07): fora da base E inadimplente ganham conversa em modo humano,
@@ -24,8 +25,10 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
   const [escs, setEscs] = useState<Esc[]>([])
   const [resolvidas, setResolvidas] = useState<Esc[]>([])
   const [verResolvidas, setVerResolvidas] = useState(false)
+  // caso "segundo número": visitante que na verdade é aluno com outro WhatsApp
+  const [vincular, setVincular] = useState<Esc | null>(null)
 
-  const SEL = 'id,motivo,status,claimed_by,created_at,resolvida_em,conversas(id,status,alunos(nome,phone,status,situacao))'
+  const SEL = 'id,motivo,status,claimed_by,created_at,resolvida_em,conversas(id,status,alunos(id,nome,phone,status,situacao))'
 
   const carregar = async () => {
     const [pend, res] = await Promise.all([
@@ -132,6 +135,13 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
                     Abrir no Inbox
                   </button>
                 )}
+                {e.conversas?.alunos && ehVisitante(e) && (
+                  <button onClick={() => setVincular(e)}
+                    title="Aluno real escrevendo de outro WhatsApp? Vincule este número ao cadastro dele — a conversa migra e a Diana assume"
+                    className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
+                    🔗 Vincular a aluno
+                  </button>
+                )}
                 {e.conversas && !ehBarrado(e) && (
                   <button onClick={() => resolver(e, true)} title="Resolve a escalação e devolve a conversa para a Diana"
                     className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
@@ -174,6 +184,16 @@ export default function Escalacoes({ irParaInbox }: { irParaInbox: (convId?: str
           </button>
           {verResolvidas && resolvidas.map(card)}
         </div>
+      )}
+
+      {vincular?.conversas?.alunos && (
+        <VincularAluno
+          visitanteId={vincular.conversas.alunos.id}
+          visitanteNome={vincular.conversas.alunos.nome}
+          visitantePhone={vincular.conversas.alunos.phone}
+          aoFechar={() => setVincular(null)}
+          aoVincular={carregar} // a RPC resolve a escalação 📵 — recarrega a lista
+        />
       )}
     </div>
   )

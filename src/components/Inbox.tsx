@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase, STATUS_CONV, COR_INDICE, fmtHora, fmtData, fmtFone } from '../lib/supabase'
+import VincularAluno, { type ResultadoVinculo } from './VincularAluno'
 
 // Porte fiel do Inbox da Anne Vendedora (anne/painel) adaptado ao schema da
 // Diana: conversations→conversas, contacts→alunos, messages→mensagens,
@@ -70,6 +71,8 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
   const [enviandoTpl, setEnviandoTpl] = useState(false)
   const [msgTpl, setMsgTpl] = useState('')
   const [infoAberto, setInfoAberto] = useState(false)
+  // caso "segundo número": visitante que na verdade é aluno com outro WhatsApp
+  const [vincularAberto, setVincularAberto] = useState(false)
   const fimRef = useRef<HTMLDivElement>(null)
 
   const buscaRef = useRef('')
@@ -205,6 +208,18 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
     await supabase.from('escalacoes').update({ status: 'resolvida', resolvida_em: new Date().toISOString() })
       .eq('conversa_id', sel.id).neq('status', 'resolvida')
     setSel({ ...sel, status: 'ia' })
+  }
+
+  // pós-vínculo: o id da conversa pode ter mudado (threads fundidas na do
+  // aluno real) — recarrega a lista e seleciona pela conversa_id da RPC
+  const aposVincular = async (r: ResultadoVinculo) => {
+    await carregarConvs()
+    const alvo = r?.conversa_id ?? sel?.id
+    if (!alvo) { setSel(null); setMsgs([]); return }
+    const { data } = await supabase.from('conversas').select(SEL).eq('id', alvo).maybeSingle()
+    setSel((data as any) ?? null)
+    if (data) carregarMsgs(alvo) // mesmo id de conversa: msgs fundidas/interação nova
+    else setMsgs([])
   }
 
   const apagarConversa = async () => {
@@ -355,7 +370,7 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
               {ehVisitante && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded border border-gold/40 text-gold bg-gold/5 shrink-0"
                   title="Não está na base de alunos — atendimento 100% humano; se comprar, vira aluno automaticamente">
-                  fora da base
+                  📵 fora da base
                 </span>
               )}
               {ehInadimplente && (
@@ -372,6 +387,13 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
               <div className="ml-auto flex items-center gap-2">
                 <button onClick={() => setInfoAberto(true)} title="Dados do aluno"
                   className="xl:hidden text-xs text-dim border border-line rounded-lg px-2.5 py-1.5 hover:text-cream transition">ℹ️</button>
+                {ehVisitante && sel.alunos && (
+                  <button onClick={() => setVincularAberto(true)}
+                    title="Aluno real escrevendo de outro WhatsApp? Vincule este número ao cadastro dele — a conversa migra e a Diana assume"
+                    className="text-xs font-semibold bg-teal/15 text-teal border border-teal/40 rounded-lg px-3 py-1.5 hover:bg-teal/25 transition">
+                    🔗 Vincular a aluno
+                  </button>
+                )}
                 {sel.status === 'humano' ? (
                   !ehBarrado && (
                   <button onClick={devolver}
@@ -530,6 +552,16 @@ export default function Inbox({ convInicial, aoConsumir }: { convInicial?: strin
             </div>
           )}
         </div>
+      )}
+
+      {vincularAberto && sel?.alunos && (
+        <VincularAluno
+          visitanteId={sel.alunos.id}
+          visitanteNome={sel.alunos.nome}
+          visitantePhone={sel.alunos.phone}
+          aoFechar={() => setVincularAberto(false)}
+          aoVincular={aposVincular}
+        />
       )}
     </div>
   )
