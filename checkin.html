@@ -441,8 +441,16 @@
 (function () {
   'use strict';
 
-  var ENDPOINT = 'https://nbyiabyrgjukaqeowhlr.supabase.co/functions/v1/forms';
-  var ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ieWlhYnlyZ2p1a2FxZW93aGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMDAyMjMsImV4cCI6MjEwMDY3NjIyM30.grbGjjv1W1pqaJfiQYc63B4jYjAKOKAkNrsmJrX97bA';
+  // backend: em localhost (npm run dev) o formulário fala com o Supabase LOCAL;
+  // em qualquer outro endereço — o GitHub Pages onde o aluno abre — com produção.
+  // Testado em src/lib/__tests__/formularios-endpoint.test.ts. Ver docs/07-operacao/ambiente-local.md.
+  var LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  var ENDPOINT = LOCAL
+    ? 'http://127.0.0.1:54321/functions/v1/forms'
+    : 'https://nbyiabyrgjukaqeowhlr.supabase.co/functions/v1/forms';
+  var ANON = LOCAL
+    ? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
+    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ieWlhYnlyZ2p1a2FxZW93aGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMDAyMjMsImV4cCI6MjEwMDY3NjIyM30.grbGjjv1W1pqaJfiQYc63B4jYjAKOKAkNrsmJrX97bA';
   var HEADERS = {
     'Content-Type': 'application/json',
     'apikey': ANON,
